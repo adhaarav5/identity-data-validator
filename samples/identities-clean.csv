@@ -1,0 +1,5 @@
+employeeId,firstName,lastName,email,department,manager,status,accountEnabled
+1001,Maria,Lopez,maria.lopez@contoso.com,Executive,,Active,true
+1002,Priya,Shah,priya.shah@contoso.com,IT,1001,Active,true
+1003,James,Okafor,james.okafor@contoso.com,IT,1002,Terminated,false
+1004,Chen,Wei,chen.wei@contoso.com,Finance,1001,Active,true
