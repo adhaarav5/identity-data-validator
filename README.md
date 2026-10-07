@@ -1,45 +1,105 @@
 # Identity Data Validator
 
-A small PowerShell script that checks identity data in a CSV file **before** it is loaded into an IAM or identity governance tool (for example, SailPoint).
+A PowerShell script that checks identity data before it is loaded into an IAM tool.
 
-Bad source data is one of the most common causes of failed correlation and wrong access. Catching it early saves time in DEV, UAT, and PROD.
+## Why I made this
 
-> All data in this repository is fake and created for demonstration only.
+Identity automation depends on good data. Joiner, Mover, Leaver (JML) workflows, SCIM provisioning and dynamic group rules all trust the data they receive. One bad row can cause a failed provisioning run, wrong access, or a leaver who can still log in.
+
+This script checks a CSV export (for example from an HR system) and reports problems before the data goes into the IAM tool. It only reads the file. It does not change or create any account.
 
 ## What it checks
 
-| Rule | Severity | Why it matters |
-|------|----------|----------------|
-| Missing required values | Medium | Empty fields break correlation and provisioning rules |
-| Invalid email format | Medium | Notifications and account matching can fail |
-| Invalid status value | Medium | Lifecycle logic may not run correctly |
-| Terminated user with enabled account | High | Security risk: a leaver still has access |
-| Duplicate employee ID | High | Two people may be merged into one identity |
-| Duplicate email | High | Accounts can be correlated to the wrong person |
-| Manager not found / self-manager | Medium | Approval and certification routing can fail |
+High problems (the pipeline stops):
 
-## How to run
+* Terminated user whose account is still enabled
+* Same employee ID used more than once
+* Same email used by more than one person
 
-Requires PowerShell 5.1 or later (Windows, macOS, or Linux).
+Medium problems:
+
+* Empty required field
+* Email in the wrong format
+* Status that is not Active, Terminated or Leave
+* accountEnabled that is not true or false
+* Active user with a disabled account
+* User listed as their own manager
+* Manager ID that is not in the file
+* Active user whose manager is terminated
+
+Low problems:
+
+* Empty manager field (normal for top managers)
+* Extra spaces at the start or end of a value
+
+## How to use it
+
+Run this in PowerShell:
 
 ```powershell
-.\Test-IdentityData.ps1 -Path .\sample-identities.csv
+.\Test-IdentityData.ps1 -Path .\samples\identities-with-problems.csv
 ```
 
-Optional: choose where the report is saved.
+To choose where the report is saved:
 
 ```powershell
-.\Test-IdentityData.ps1 -Path .\sample-identities.csv -ReportPath .\my-report.csv
+.\Test-IdentityData.ps1 -Path .\data.csv -ReportPath .\result.csv
 ```
 
-The script prints the findings, saves them to a CSV report, and exits with code `1` if any High severity issue is found. This lets a pipeline stop a bad file from moving forward.
+## CSV format
 
-## Expected result for the sample file
+The file must have these columns:
 
-The sample file has deliberate errors, so the script should report problems such as a terminated user with an enabled account, a duplicate employee ID, a duplicate email, an invalid email, an invalid status, a missing department, and a manager who does not exist.
+```
+employeeId, firstName, lastName, email, department, manager, status, accountEnabled
+```
 
-## Ideas for next steps
+## Result
 
-- Add a rule for required department names from an approved list
-- Add unit tests with Pester
-- Run the script automatically with GitHub Actions
+The script prints the problems on screen and saves them in a report file (validation-report.csv by default). High problems are listed first.
+
+Example with the problem sample file:
+
+```
+Rows checked: 10
+Findings: 12 (High: 3, Medium: 7, Low: 2)
+```
+
+## Exit codes
+
+* 0 means no High problems. It is safe to continue.
+* 1 means at least one High problem. Stop the pipeline.
+
+Medium and Low problems are reported but do not stop the pipeline.
+
+## Use in a pipeline
+
+Because of the exit code, a pipeline can stop when the data is bad. Example for GitHub Actions:
+
+```yaml
+- name: Validate identity data
+  shell: pwsh
+  run: ./Test-IdentityData.ps1 -Path ./data/hr-export.csv
+```
+
+If the script returns 1, the job fails and the bad data is not loaded.
+
+## Sample files
+
+The samples folder has two files to try:
+
+* identities-with-problems.csv has mistakes on purpose, so you can see the checks work
+* identities-clean.csv has good data. It still shows one Low finding because the top manager has no manager, but the exit code is 0
+
+## Limits
+
+* It only checks a CSV file. It does not connect to Entra ID, Okta or any live system.
+* It checks if the data is correct in format and consistent. It cannot know if the data is true.
+* The rules are at the top of the script, so they are easy to change.
+
+## Ideas for later
+
+* Check department names against an allowed list
+* Check UPN format and make sure UPNs are unique
+* Find users who have been inactive for a long time but are still enabled
+* Add automatic tests and a GitHub Actions workflow
